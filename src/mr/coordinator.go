@@ -10,6 +10,15 @@ import "net/http"
 type Coordinator struct {
 	// Your definitions here.
 
+	// 生命周期控制
+	NMap int
+	NReduce int
+	TaskList []
+
+
+	// map 任务
+
+	// reduce 任务
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -21,6 +30,10 @@ type Coordinator struct {
 //
 func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
+	return nil
+}
+
+func (c *Coordinator) GetTask(args *Task, reply *Task) error {
 	return nil
 }
 
@@ -63,6 +76,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 
 	// Your code here.
+
 
 
 	c.server()

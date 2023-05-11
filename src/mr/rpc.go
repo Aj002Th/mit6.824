@@ -24,6 +24,40 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 
+// 通信结构
+type Task struct {
+	TaskType int
+	TaskID int
+	InputFiles []string
+	OutputFiles []string
+	NReduce int
+}
+
+type Empty struct {}
+
+// 一些枚举量
+const (
+	// coordinator 状态
+	MapStage int = iota
+	ReduceStage
+	AllDoneStage
+)
+
+const (
+	// task 类型
+	MapTask int = iota
+	ReduceTask
+	WaitTask
+	ExitTask
+)
+
+const (
+	// task 状态
+	Waiting int = iota
+	Working
+	Done
+)
+
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
