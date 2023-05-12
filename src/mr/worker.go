@@ -126,7 +126,7 @@ loop:
 				kva := make([]KeyValue, 0)
 				file, err := os.Open(fname)
 				if err != nil {
-					log.Fatalf("[map] cannot open %v: %v", fname, err)
+					log.Fatalf("[reduce] cannot open %v: %v", fname, err)
 				}
 				dec := json.NewDecoder(file)
 				for {
@@ -151,7 +151,10 @@ loop:
 					output := reducef(kva[i].Key, values)
 
 					// this is the correct format for each line of Reduce output.
-					fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
+					_, err = fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
+					if err != nil {
+						log.Printf("[reduce] cannot write file: %v\n", err)
+					}
 
 					i = j
 				}
@@ -178,7 +181,7 @@ loop:
 			time.Sleep(time.Second)
 
 		case ExitTask:
-			log.Panicln("exit")
+			log.Println("exit")
 			break loop
 		}
 	}
