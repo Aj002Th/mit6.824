@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-//
+// KeyValue
 // Map functions return a slice of KeyValue.
 //
 type KeyValue struct {
@@ -20,10 +20,9 @@ type KeyValue struct {
 	Value string
 }
 
-// for sorting by key.
+// ByKey for sorting by key.
 type ByKey []KeyValue
 
-// for sorting by key.
 func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
@@ -38,7 +37,7 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-//
+// Worker
 // main/mrworker.go calls this function.
 //
 func Worker(mapf func(string, string) []KeyValue,
@@ -49,9 +48,10 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
+loop:
 	for {
 		empty, task := Empty{}, Task{}
-		ok := call("GetTask", &empty, &task)
+		ok := call("Coordinator.GetTask", &empty, &task)
 		if !ok {
 			task.TaskType = WaitTask
 		}
@@ -107,7 +107,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 			}
 			// 汇报 master
-			ok := call("FinishTask", &task, &empty)
+			ok := call("Coordinator.FinishTask", &task, &empty)
 			if !ok {
 				log.Printf("[map] Finish task failed")
 			}
@@ -167,7 +167,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				log.Fatalf("[reduce] cannot close file %v: %v", ofile.Name(), err)
 			}
 			// 汇报 master
-			ok := call("FinishTask", &task, &empty)
+			ok := call("Coordinator.FinishTask", &task, &empty)
 			if !ok {
 				log.Printf("[reduce] Finish task failed")
 			}
@@ -179,13 +179,14 @@ func Worker(mapf func(string, string) []KeyValue,
 
 		case ExitTask:
 			log.Panicln("exit")
-			break
+			break loop
 		}
 	}
 
+	log.Panicln("worker exit")
 }
 
-//
+// CallExample
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
