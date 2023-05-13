@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 // TaskInfo task 全量信息
@@ -89,7 +90,8 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		c.getTaskFromInfo(reply, taskInfo)
 		log.Printf("[GetTask - map] reply: %+v\n", reply)
 		c.ControlLock.Unlock()
-		// TODO: 超时重新分配任务
+		// 超时监控 - 超时重新分配任务
+		go c.mapTaskTimeoutWatcher(taskToken)
 
 	case ReduceStage:
 		taskToken, ok := <-c.ReduceTaskChan
@@ -121,12 +123,48 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		c.getTaskFromInfo(reply, taskInfo)
 		log.Printf("[GetTask - reduce] reply: %+v\n", reply)
 		c.ControlLock.Unlock()
-		// TODO: 超时重新分配任务
+		// 超时监控 - 超时重新分配任务
 
 	case AllDoneStage:
 		reply.TaskType = ExitTask
 	}
 	return nil
+}
+
+// map task timeout watcher
+func (c *Coordinator) mapTaskTimeoutWatcher(taskToken TaskToken) {
+	// 设置超时时间
+	time.Sleep(Timeout)
+
+	c.ControlLock.Lock()
+	defer c.ControlLock.Unlock()
+
+	// 检查任务是否完成
+	taskKey := getMapTaskKey(taskToken.TaskID)
+	taskInfo := c.TaskList[taskKey]
+	if taskInfo.TaskStatus != Done {
+		// 触发超时, 将任务重新放入 map 任务分配 chan
+		c.MapTaskChan <- taskToken
+		log.Printf("[mapTaskTimeoutWatcher] task timeout: %+v\n", taskToken)
+	}
+}
+
+// reduce task timeout watcher
+func (c *Coordinator) reduceTaskTimeoutWatcher(taskToken TaskToken) {
+	// 设置超时时间
+	time.Sleep(Timeout)
+
+	c.ControlLock.Lock()
+	defer c.ControlLock.Unlock()
+
+	// 检查任务是否完成
+	taskKey := getReduceTaskKey(taskToken.TaskID)
+	taskInfo := c.TaskList[taskKey]
+	if taskInfo.TaskStatus != Done {
+		// 触发超时, 将任务重新放入 reduce 任务分配 chan
+		c.ReduceTaskChan <- taskToken
+		log.Printf("[reduceTaskTimeoutWatcher] task timeout: %+v\n", taskToken)
+	}
 }
 
 func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
@@ -200,6 +238,7 @@ func (c *Coordinator) Done() bool {
 	defer c.ControlLock.Unlock()
 	if c.Stage == AllDoneStage {
 		ret = true
+		log.Printf("[Done] ready to exit")
 	}
 
 	return ret

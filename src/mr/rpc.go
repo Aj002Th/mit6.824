@@ -36,28 +36,6 @@ type Task struct {
 // Empty 通信结构
 type Empty struct{}
 
-// coordinator 状态枚举量
-const (
-	MapStage int = iota
-	ReduceStage
-	AllDoneStage
-)
-
-// task 类型枚举量
-const (
-	MapTask int = iota
-	ReduceTask
-	WaitTask
-	ExitTask
-)
-
-// task 状态枚举量
-const (
-	Waiting int = iota
-	Working
-	Done
-)
-
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
 // Can't use the current directory since
