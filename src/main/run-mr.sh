@@ -1,6 +1,7 @@
 # build
 go build -buildmode=plugin ../mrapps/wc.go
-rm mr-out*
+rm mr-*
+#rm mr-out*
 
 # start worker
 go run mrworker.go wc.so

@@ -72,7 +72,6 @@ loop:
 			log.Println("[map] read input file: end")
 			// 完成 map 操作并将中间结果分组
 			kva := mapf(filename, string(content))
-			sort.Sort(ByKey(kva))
 			intermediate := make([]ByKey, task.NReduce)
 			for _, kv := range kva {
 				bucket := ihash(kv.Key) % task.NReduce
@@ -121,9 +120,10 @@ loop:
 			if err != nil {
 				log.Fatalf("[reduce] cannot create temp file %v: %v", oname, err)
 			}
-			// 将多个中间文件一个个进行处理
+			// 将多个中间文件一个个进行处理 -> mr-out文件中统计结果不统一
+			// 需要将中间文件内容全部读入内存, 排序后统一处理
+			kva := []KeyValue{}
 			for _, fname := range task.InputFiles {
-				kva := make([]KeyValue, 0)
 				file, err := os.Open(fname)
 				if err != nil {
 					log.Fatalf("[reduce] cannot open %v: %v", fname, err)
@@ -137,27 +137,28 @@ loop:
 					}
 					kva = append(kva, kv)
 				}
-				// 将 key 相同的 value 合到一个数组里
-				i := 0
-				for i < len(kva) {
-					j := i + 1
-					for j < len(kva) && kva[j].Key == kva[i].Key {
-						j++
-					}
-					values := []string{}
-					for k := i; k < j; k++ {
-						values = append(values, kva[k].Value)
-					}
-					output := reducef(kva[i].Key, values)
-
-					// this is the correct format for each line of Reduce output.
-					_, err = fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
-					if err != nil {
-						log.Printf("[reduce] cannot write file: %v\n", err)
-					}
-
-					i = j
+			}
+			// 将 key 相同的 value 合到一个数组里, 然后进行 reduce 操作
+			sort.Sort(ByKey(kva))
+			i := 0
+			for i < len(kva) {
+				j := i + 1
+				for j < len(kva) && kva[j].Key == kva[i].Key {
+					j++
 				}
+				values := []string{}
+				for k := i; k < j; k++ {
+					values = append(values, kva[k].Value)
+				}
+				output := reducef(kva[i].Key, values)
+
+				// this is the correct format for each line of Reduce output.
+				_, err = fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
+				if err != nil {
+					log.Printf("[reduce] cannot write file: %v\n", err)
+				}
+
+				i = j
 			}
 			// 生成结果文件
 			err = os.Rename(ofile.Name(), oname)
@@ -181,7 +182,7 @@ loop:
 			time.Sleep(time.Second)
 
 		case ExitTask:
-			log.Println("exit")
+			log.Println("[exit] receive exit command")
 			break loop
 		}
 	}
