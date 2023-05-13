@@ -130,6 +130,7 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 }
 
 func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
+	log.Printf("[FinishTask] args: %+v\n", args)
 	c.ControlLock.Lock()
 	defer c.ControlLock.Unlock()
 
@@ -146,6 +147,7 @@ func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 			c.MapNeed--
 			if c.MapNeed == 0 {
 				c.Stage = ReduceStage
+				log.Println("[FinishTask] change state to reduce stage")
 			}
 		}
 		c.MapLock.Unlock()
@@ -161,6 +163,7 @@ func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 			c.ReduceNeed--
 			if c.ReduceNeed == 0 {
 				c.Stage = AllDoneStage
+				log.Println("[FinishTask] change state to all done stage")
 			}
 		}
 		c.ReduceLock.Unlock()
