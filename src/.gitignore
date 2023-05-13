@@ -11,4 +11,5 @@ mrtmp.*
 /main/mrsequential
 /main/mrworker
 
+mr-*-*
 mr-out-*

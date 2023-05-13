@@ -43,11 +43,6 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
-
 loop:
 	for {
 		empty, task := Empty{}, Task{}
@@ -55,27 +50,32 @@ loop:
 		if !ok {
 			task.TaskType = WaitTask
 		}
+		log.Printf("[GetTask]  task: %+v\n", task)
 
 		switch task.TaskType {
 		case MapTask:
 			log.Println("[map] task start")
 			// 读取 task 对应文件
+			log.Println("[map] read input file: start")
 			filename := task.InputFiles[0]
 			file, err := os.Open(filename)
 			if err != nil {
-				log.Fatalf("[map] cannot open %v: %v", filename, err)
+				log.Printf("[map] cannot open %v: %v\n", filename, err)
+				break loop
 			}
 			content, err := ioutil.ReadAll(file)
 			if err != nil {
-				log.Fatalf("[map] cannot read %v: %v", filename, err)
+				log.Printf("[map] cannot read %v: %v\n", filename, err)
+				break loop
 			}
 			file.Close()
+			log.Println("[map] read input file: end")
 			// 完成 map 操作并将中间结果分组
 			kva := mapf(filename, string(content))
 			sort.Sort(ByKey(kva))
 			intermediate := make([]ByKey, task.NReduce)
 			for _, kv := range kva {
-				bucket := ihash(kv.Key)
+				bucket := ihash(kv.Key) % task.NReduce
 				intermediate[bucket] = append(intermediate[bucket], kv)
 			}
 			// 保存中间结果文件
@@ -186,7 +186,7 @@ loop:
 		}
 	}
 
-	log.Panicln("worker exit")
+	log.Println("worker exit")
 }
 
 // CallExample

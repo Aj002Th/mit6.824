@@ -61,6 +61,7 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 	switch c.Stage {
 	case MapStage:
 		taskToken, ok := <-c.MapTaskChan
+		log.Printf("[GetTask - map] TaskToken: %+v\n", taskToken)
 		// chan 里没任务了 - 等待 map 任务全部执行结束
 		if !ok {
 			reply.TaskType = WaitTask
@@ -71,14 +72,14 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		taskKey := getMapTaskKey(taskToken.TaskID)
 		taskInfo, ok := c.TaskList[taskKey]
 		if !ok {
-			log.Printf("[GetTask - map] Task %v not found", taskToken.TaskID)
+			log.Printf("[GetTask - map] Task %v not found\n", taskToken.TaskID)
 			reply.TaskType = WaitTask
 			break
 		}
 		if taskInfo.TaskStatus == Done {
 			// 走入这个分支的情景: 任务超时后重新被放入 chan, 还没下发原先执行该任务的 worker 就完成了任务
 			// 忽略掉这个任务即可
-			log.Printf("[GetTask - map] Task %v have been done", taskToken.TaskID)
+			log.Printf("[GetTask - map] Task %v have been done\n", taskToken.TaskID)
 			reply.TaskType = WaitTask
 			break
 		}
@@ -86,10 +87,13 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		c.TaskList[taskKey] = taskInfo
 		// 组装 reply 信息
 		c.getTaskFromInfo(reply, taskInfo)
+		log.Printf("[GetTask - map] reply: %+v\n", reply)
 		c.ControlLock.Unlock()
+		// TODO: 超时重新分配任务
 
 	case ReduceStage:
 		taskToken, ok := <-c.ReduceTaskChan
+		log.Printf("[GetTask - reduce] TaskToken: %+v\n", taskToken)
 		// chan 里没任务了 - 等待 reduce 任务全部执行结束
 		if !ok {
 			reply.TaskType = WaitTask
@@ -115,7 +119,9 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		c.TaskList[taskKey] = taskInfo
 		// 组装 reply 信息
 		c.getTaskFromInfo(reply, taskInfo)
+		log.Printf("[GetTask - reduce] reply: %+v\n", reply)
 		c.ControlLock.Unlock()
+		// TODO: 超时重新分配任务
 
 	case AllDoneStage:
 		reply.TaskType = ExitTask
@@ -124,12 +130,39 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 }
 
 func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
+	c.ControlLock.Lock()
+	defer c.ControlLock.Unlock()
+
 	switch args.TaskType {
 	case MapStage:
 		c.MapLock.Lock()
+		taskKey := getMapTaskKey(args.TaskID)
+		taskInfo := c.TaskList[taskKey]
+		if taskInfo.TaskStatus != Done {
+			// 修改任务状态
+			taskInfo.TaskStatus = Done
+			c.TaskList[taskKey] = taskInfo
+			// 更新 MapNeed
+			c.MapNeed--
+			if c.MapNeed == 0 {
+				c.Stage = ReduceStage
+			}
+		}
 		c.MapLock.Unlock()
 	case ReduceStage:
 		c.ReduceLock.Lock()
+		taskKey := getReduceTaskKey(args.TaskID)
+		taskInfo := c.TaskList[taskKey]
+		if taskInfo.TaskStatus != Done {
+			// 修改任务状态
+			taskInfo.TaskStatus = Done
+			c.TaskList[taskKey] = taskInfo
+			// 更新 ReduceNeed
+			c.ReduceNeed--
+			if c.ReduceNeed == 0 {
+				c.Stage = AllDoneStage
+			}
+		}
 		c.ReduceLock.Unlock()
 	default:
 	}
@@ -159,10 +192,10 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 	ret := false
 
-	// Your code here.
-	c.ReduceLock.Lock()
-	defer c.ReduceLock.Unlock()
-	if c.ReduceNeed == 0 {
+	// 到达 AllDoneStage 说明任务已经结束
+	c.ControlLock.Lock()
+	defer c.ControlLock.Unlock()
+	if c.Stage == AllDoneStage {
 		ret = true
 	}
 
@@ -175,10 +208,12 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
+	log.Printf("[MakeCoordinator] get in function")
 	nMap := len(files)
 	taskList := make(map[string]TaskInfo, 0)
 
 	// 创建 map 任务
+	log.Printf("[MakeCoordinator] start create map task")
 	mapTaskChan := make(chan TaskToken, nMap)
 	for i, fname := range files {
 		// 填充 task list
@@ -199,7 +234,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	// 创建 reduce 任务
-	reduceTaskChan := make(chan TaskToken, nMap)
+	log.Printf("[MakeCoordinator] start create reduce task")
+	reduceTaskChan := make(chan TaskToken, nReduce)
 	for i := 0; i < nReduce; i++ {
 		inputFiles := make([]string, 0)
 		for j := 0; j < nMap; j++ {
@@ -237,6 +273,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		ReduceNeed:     nReduce,
 		ReduceTaskChan: reduceTaskChan,
 	}
+	log.Printf("[MakeCoordinator] coordinator initialized")
 
 	c.server()
 	return &c
