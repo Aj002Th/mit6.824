@@ -37,12 +37,20 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+func workerLogInit() {
+	log.SetPrefix("worker: ")
+	if !Debug {
+		log.SetOutput(ioutil.Discard)
+	}
+}
+
 // Worker
 // main/mrworker.go calls this function.
 //
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-	log.SetPrefix("worker: ")
+	workerLogInit()
+
 loop:
 	for {
 		empty, task := Empty{}, Task{}
@@ -69,7 +77,10 @@ loop:
 				log.Printf("[map] cannot read %v: %v\n", filename, err)
 				break loop
 			}
-			file.Close()
+			err = file.Close()
+			if err != nil {
+				log.Fatalf("[map] cannot close file %v: %v", filename, err)
+			}
 			log.Println("[map] read input file: end")
 			// 完成 map 操作并将中间结果分组
 			kva := mapf(filename, string(content))
@@ -91,7 +102,7 @@ loop:
 				for _, kv := range bucket {
 					err := enc.Encode(&kv)
 					if err != nil {
-						// log.Fatalf("[map] cannot encode %v: %v", kv, err)
+						log.Printf("[map] cannot encode %v: %v", kv, err)
 						break
 					}
 				}
@@ -129,10 +140,14 @@ loop:
 				for {
 					var kv KeyValue
 					if err := dec.Decode(&kv); err != nil {
-						// log.Fatalf("[reduce] cannot decode %v: %v", kv, err)
+						log.Printf("[reduce] cannot decode %v: %v", kv, err)
 						break
 					}
 					kva = append(kva, kv)
+				}
+				err = file.Close()
+				if err != nil {
+					log.Fatalf("[reduce] cannot close file %v: %v", fname, err)
 				}
 			}
 			// 将 key 相同的 value 合到一个数组里, 然后进行 reduce 操作
@@ -172,7 +187,7 @@ loop:
 
 		case WaitTask:
 			log.Println("[wait] task start")
-			time.Sleep(time.Millisecond * 500)
+			time.Sleep(WaitTaskDuration)
 
 		case ExitTask:
 			log.Println("[exit] receive exit command")
@@ -227,12 +242,12 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	defer c.Close()
 
 	err = c.Call(rpcname, args, reply)
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(RpcDuration)
 
 	if err == nil {
 		return true
 	}
 
-	fmt.Println(err)
+	log.Printf("[call] %v failed: %v\n", rpcname, err)
 	return false
 }

@@ -2,6 +2,7 @@ package mr
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -59,7 +60,15 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
-	switch c.Stage {
+	// 这么加会宕机是为啥？
+	//c.ControlLock.Lock()
+	//defer c.ControlLock.Unlock()
+
+	c.ControlLock.Lock()
+	stage := c.Stage
+	c.ControlLock.Unlock()
+
+	switch stage {
 	case MapStage:
 		taskToken, ok := <-c.MapTaskChan
 		log.Printf("[GetTask - map] TaskToken: %+v\n", taskToken)
@@ -86,10 +95,10 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		}
 		taskInfo.TaskStatus = Working
 		c.TaskList[taskKey] = taskInfo
+		c.ControlLock.Unlock()
 		// 组装 reply 信息
 		c.getTaskFromInfo(reply, taskInfo)
 		log.Printf("[GetTask - map] reply: %+v\n", reply)
-		c.ControlLock.Unlock()
 		// 超时监控 - 超时重新分配任务
 		go c.mapTaskTimeoutWatcher(taskToken)
 
@@ -119,15 +128,17 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		}
 		taskInfo.TaskStatus = Working
 		c.TaskList[taskKey] = taskInfo
+		c.ControlLock.Unlock()
 		// 组装 reply 信息
 		c.getTaskFromInfo(reply, taskInfo)
 		log.Printf("[GetTask - reduce] reply: %+v\n", reply)
-		c.ControlLock.Unlock()
 		// 超时监控 - 超时重新分配任务
+		go c.reduceTaskTimeoutWatcher(taskToken)
 
 	case AllDoneStage:
 		reply.TaskType = ExitTask
 	}
+
 	return nil
 }
 
@@ -169,6 +180,7 @@ func (c *Coordinator) reduceTaskTimeoutWatcher(taskToken TaskToken) {
 
 func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 	log.Printf("[FinishTask] args: %+v\n", args)
+
 	c.ControlLock.Lock()
 	defer c.ControlLock.Unlock()
 
@@ -225,6 +237,7 @@ func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 		}
 
 	default:
+		log.Printf("[FinishTask] get a specific task type: :%v\n", args.TaskType)
 	}
 	return nil
 }
@@ -269,7 +282,8 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	log.SetPrefix("coordinator: ")
+	coordinatorLogInit()
+
 	log.Printf("[MakeCoordinator] get in function")
 	nMap := len(files)
 	taskList := make(map[string]TaskInfo, 0)
@@ -354,4 +368,11 @@ func getMapTaskKey(taskID int) string {
 
 func getReduceTaskKey(taskID int) string {
 	return fmt.Sprintf("reduce_%d", taskID)
+}
+
+func coordinatorLogInit() {
+	log.SetPrefix("coordinator: ")
+	if !Debug {
+		log.SetOutput(ioutil.Discard)
+	}
 }

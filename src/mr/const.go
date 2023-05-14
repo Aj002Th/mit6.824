@@ -24,4 +24,12 @@ const (
 	Done
 )
 
-const Timeout time.Duration = 8 * time.Second
+// 时间量
+const (
+	Timeout          time.Duration = 10 * time.Second
+	WaitTaskDuration time.Duration = 500 * time.Millisecond
+	RpcDuration      time.Duration = 100 * time.Millisecond
+)
+
+// Debug 是否开启日志
+const Debug = true
