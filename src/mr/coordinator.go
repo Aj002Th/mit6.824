@@ -175,6 +175,16 @@ func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 	switch args.TaskType {
 	case MapStage:
 		c.MapLock.Lock()
+		defer c.MapLock.Unlock()
+		// 生成真的的中间结果文件
+		for i, tmpFile := range args.OutputFiles {
+			fname := fmt.Sprintf("mr-%d-%d", args.TaskID, i)
+			err := os.Rename(tmpFile, fname)
+			if err != nil {
+				log.Fatalf("[FinishTask - map stage] cannot rename file %v to %v: %v", tmpFile, fname, err)
+			}
+		}
+		// 修改元信息
 		taskKey := getMapTaskKey(args.TaskID)
 		taskInfo := c.TaskList[taskKey]
 		if taskInfo.TaskStatus != Done {
@@ -188,9 +198,18 @@ func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 				log.Println("[FinishTask] change state to reduce stage")
 			}
 		}
-		c.MapLock.Unlock()
+
 	case ReduceStage:
 		c.ReduceLock.Lock()
+		defer c.ReduceLock.Unlock()
+		// 生成真正的结果文件
+		fname := fmt.Sprintf("mr-out-%d", args.TaskID)
+		tmpFile := args.OutputFiles[0]
+		err := os.Rename(tmpFile, fname)
+		if err != nil {
+			log.Fatalf("[FinishTask - reduce stage] cannot rename file %v to %v: %v", tmpFile, fname, err)
+		}
+		// 修改元信息
 		taskKey := getReduceTaskKey(args.TaskID)
 		taskInfo := c.TaskList[taskKey]
 		if taskInfo.TaskStatus != Done {
@@ -204,7 +223,7 @@ func (c *Coordinator) FinishTask(args *Task, reply *Empty) error {
 				log.Println("[FinishTask] change state to all done stage")
 			}
 		}
-		c.ReduceLock.Unlock()
+
 	default:
 	}
 	return nil
@@ -250,6 +269,7 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
+	log.SetPrefix("coordinator: ")
 	log.Printf("[MakeCoordinator] get in function")
 	nMap := len(files)
 	taskList := make(map[string]TaskInfo, 0)

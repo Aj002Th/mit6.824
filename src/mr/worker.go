@@ -42,13 +42,14 @@ func ihash(key string) int {
 //
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-
+	log.SetPrefix("worker: ")
 loop:
 	for {
 		empty, task := Empty{}, Task{}
 		ok := call("Coordinator.GetTask", &empty, &task)
 		if !ok {
-			task.TaskType = WaitTask
+			log.Println("[GetTask] failed: coordinator have exited")
+			task.TaskType = ExitTask
 		}
 		log.Printf("[GetTask]  task: %+v\n", task)
 
@@ -94,12 +95,8 @@ loop:
 						break
 					}
 				}
-				// 生成中间文件
-				err = os.Rename(f.Name(), fname)
-				if err != nil {
-					log.Fatalf("[map] cannot rename file %v: %v", f.Name(), err)
-				}
-				task.OutputFiles = append(task.OutputFiles, fname)
+				// 生成中间临时文件 - 写操作交给 master 来做
+				task.OutputFiles = append(task.OutputFiles, f.Name())
 				err = f.Close()
 				if err != nil {
 					log.Fatalf("[map] cannot close file %v: %v", f.Name(), err)
@@ -160,12 +157,8 @@ loop:
 
 				i = j
 			}
-			// 生成结果文件
-			err = os.Rename(ofile.Name(), oname)
-			if err != nil {
-				log.Fatalf("[reduce] cannot rename %v: %v", ofile.Name(), err)
-			}
-			task.OutputFiles = append(task.OutputFiles, oname)
+			// 生成中间临时文件 - 写操作交给 master 来做
+			task.OutputFiles = append(task.OutputFiles, ofile.Name())
 			err = ofile.Close()
 			if err != nil {
 				log.Fatalf("[reduce] cannot close file %v: %v", ofile.Name(), err)
@@ -179,7 +172,7 @@ loop:
 
 		case WaitTask:
 			log.Println("[wait] task start")
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond * 500)
 
 		case ExitTask:
 			log.Println("[exit] receive exit command")
@@ -234,6 +227,8 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	defer c.Close()
 
 	err = c.Call(rpcname, args, reply)
+	time.Sleep(time.Millisecond * 100)
+
 	if err == nil {
 		return true
 	}

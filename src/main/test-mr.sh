@@ -188,7 +188,7 @@ maybe_quiet $TIMEOUT ../mrworker ../../mrapps/rtiming.so
 NT=`cat mr-out* | grep '^[a-z] 2' | wc -l | sed 's/ //g'`
 if [ "$NT" -lt "2" ]
 then
-  echo '---' too few parallel reduces.
+  echo '---' too few parallel reduces. saw "$NT"
   echo '---' reduce parallelism test: FAIL
   failed_any=1
 else
