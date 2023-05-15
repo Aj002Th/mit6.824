@@ -84,6 +84,7 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		if !ok {
 			log.Printf("[GetTask - map] Task %v not found\n", taskToken.TaskID)
 			reply.TaskType = WaitTask
+			c.ControlLock.Unlock()
 			break
 		}
 		if taskInfo.TaskStatus == Done {
@@ -91,6 +92,7 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 			// 忽略掉这个任务即可
 			log.Printf("[GetTask - map] Task %v have been done\n", taskToken.TaskID)
 			reply.TaskType = WaitTask
+			c.ControlLock.Unlock()
 			break
 		}
 		taskInfo.TaskStatus = Working
@@ -117,6 +119,7 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 		if !ok {
 			log.Printf("[GetTask - reduce] Task %v not found", taskToken.TaskID)
 			reply.TaskType = WaitTask
+			c.ControlLock.Unlock()
 			break
 		}
 		if taskInfo.TaskStatus == Done {
@@ -124,6 +127,7 @@ func (c *Coordinator) GetTask(args *Empty, reply *Task) error {
 			// 忽略掉这个任务即可
 			log.Printf("[GetTask - reduce] Task %v have been done", taskToken.TaskID)
 			reply.TaskType = WaitTask
+			c.ControlLock.Unlock()
 			break
 		}
 		taskInfo.TaskStatus = Working
